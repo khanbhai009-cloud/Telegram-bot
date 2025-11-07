@@ -453,13 +453,14 @@ async def vip_set_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     prices = [LabeledPrice(label=f"VIP {tier.upper()} Access", amount=cost_stars)]  # XTR uses stars as integer
     await q.message.reply_invoice(
-        title=f"VIP {tier.upper()} Activation",
-        description=f"Unlock VIP {tier.upper()} — multipliers apply to Ads & Bonus.",
-        payload=f"vip_{tier}",
-        currency="XTR",  # Telegram Stars currency
-        prices=prices,
-        start_parameter=f"vip_{tier}",
-    )
+    title=f"VIP {tier.upper()} Activation",
+    description=f"Unlock VIP {tier.upper()} — multipliers apply to Ads & Bonus.",
+    payload=f"vip_{tier}",
+    provider_token="TelegramStars",  # placeholder; required param
+    currency="XTR",
+    prices=prices,
+    start_parameter=f"vip_{tier}",
+)
 
 
 async def precheckout_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
