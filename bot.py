@@ -314,6 +314,7 @@ def main():
 
 if __name__ == "__main__":
     main()  
+    
     if doc_id:
         params["documentId"] = doc_id
     url = f"{BASE_URL}/{collection}"
