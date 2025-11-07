@@ -313,7 +313,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()    if doc_id:
+    main()  
+    if doc_id:
         params["documentId"] = doc_id
     url = f"{BASE_URL}/{collection}"
     body = {"fields": {k: _fs_value(v) for k, v in data.items()}}
