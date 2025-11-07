@@ -420,7 +420,7 @@ async def stats_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         await q.edit_message_text("❌ Please /start first.")
         return
-    refs = get_referral_count(user["id"])
+    refs = get_referral_count(str(q.from_user.id))
     text = (
         "📊 Stats\n\n"
         f"Name: {user.get('name')}\n"
