@@ -55,6 +55,7 @@ BOT_USERNAME: str = "EarningBot"
 # 🔥 FIRESTORE HELPERS (REST)
 # ===================================
 
+
 def _fs_value(v: Any) -> Dict[str, Any]:
     if isinstance(v, bool):
         return {"booleanValue": v}
@@ -147,7 +148,9 @@ def run_query_equals(collection: str, field: str, value: Any) -> List[Dict[str, 
             rows.append(_fs_parse(item["document"].get("fields", {})))
     return rows
 
+
 # Domain helpers
+
 
 def _now_ts() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -218,6 +221,7 @@ def vip_multiplier(tier: str, cfg: Dict[str, Any]) -> float:
 # 💬 UI HELPERS
 # ===================================
 
+
 def main_menu_kb() -> ReplyKeyboardMarkup:
     buttons = [
         [KeyboardButton("▶️ Ad Dekho")],
@@ -228,34 +232,41 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
 
 
 def extra_menu_kb(cfg: Dict[str, Any]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👑 VIP Plans", callback_data="vip")],
-        [InlineKeyboardButton("📊 Stats", callback_data="stats")],
-        [InlineKeyboardButton("🆘 Support", url=cfg.get("supportBot", "https://t.me/"))],
-        [InlineKeyboardButton("⬅️ Back", callback_data="back_home")],
-    ])
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("👑 VIP Plans", callback_data="vip")],
+            [InlineKeyboardButton("📊 Stats", callback_data="stats")],
+            [InlineKeyboardButton("🆘 Support", url=cfg.get("supportBot", "https://t.me/"))],
+            [InlineKeyboardButton("⬅️ Back", callback_data="back_home")],
+        ]
+    )
 
 
 def balance_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏦 Withdraw Funds", callback_data="withdraw")],
-        [InlineKeyboardButton("⬅️ Back", callback_data="back_home")],
-    ])
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🏦 Withdraw Funds", callback_data="withdraw")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="back_home")],
+        ]
+    )
 
 
 def vip_menu_kb(cfg: Dict[str, Any]) -> InlineKeyboardMarkup:
     costs = cfg.get("vipCosts", {"vip1": 10, "vip2": 20, "vip3": 50})
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"VIP 1 • {costs.get('vip1', 10)}⭐", callback_data="vip_set:vip1")],
-        [InlineKeyboardButton(f"VIP 2 • {costs.get('vip2', 20)}⭐", callback_data="vip_set:vip2")],
-        [InlineKeyboardButton(f"VIP 3 • {costs.get('vip3', 50)}⭐", callback_data="vip_set:vip3")],
-        [InlineKeyboardButton("⬅️ Back", callback_data="extra")],
-    ])
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(f"VIP 1 • {costs.get('vip1', 10)}⭐", callback_data="vip_set:vip1")],
+            [InlineKeyboardButton(f"VIP 2 • {costs.get('vip2', 20)}⭐", callback_data="vip_set:vip2")],
+            [InlineKeyboardButton(f"VIP 3 • {costs.get('vip3', 50)}⭐", callback_data="vip_set:vip3")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="extra")],
+        ]
+    )
 
 
 # ===================================
 # 🛰️ KEEP-ALIVE PING
 # ===================================
+
 
 async def _ping_once():
     try:
@@ -275,6 +286,7 @@ async def keepalive_loop():
 # ===================================
 # 🤖 BOT COMMANDS / HANDLERS
 # ===================================
+
 
 async def post_init(app):
     global BOT_USERNAME
@@ -314,6 +326,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- ReplyKeyboard text handler (buttons) ----------
 
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").lower()
     uid = str(update.effective_user.id)
@@ -349,7 +362,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not can_claim:
                 await update.message.reply_text("⏳ Bonus already claimed today.", reply_markup=main_menu_kb())
                 return
-            base = int(cfg["bonusReward"])   # ← FIXED INDENT
+            base = int(cfg["bonusReward"])
             mult = vip_multiplier(user.get("vipTier", "free"), cfg)
             reward = int(round(base * mult))
             coins = int(user.get("coins", 0)) + reward
@@ -388,6 +401,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Inline callbacks (menus) ----------
 
+
 async def back_home_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     await update.callback_query.message.reply_text("🏠 Home", reply_markup=main_menu_kb())
@@ -420,6 +434,7 @@ async def stats_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------- VIP (Stars Invoice) ----------
+
 
 async def vip_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -471,195 +486,6 @@ async def successful_payment_cb(update: Update, context: ContextTypes.DEFAULT_TY
 
 # ---------- (Optional) Withdraw flow placeholders (kept minimal here) ----------
 
-async def balance_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    user = get_user(str(q.from_user.id))
-    if not user:
-        await q.edit_message_text("❌ Please /start first.")
-        return
-    await q.edit_message_text(
-        f"💸 Balance\n\nCoins: {user.get('coins',0)}\nVIP: {user.get('vipTier','free')}",
-        reply_markup=balance_menu_kb()
-    )
-
-
-async def refer_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    uid = str(q.from_user.id)
-    reward = int(get_config().get("referralReward", 10))
-    link = f"https://t.me/{BOT_USERNAME}?start={uid}"
-    refs = get_referral_count(uid)
-    await q.edit_message_text(
-        "👥 Refer & Earn\n\n"
-        f"Referral Reward: +{reward} coins to both of you.\n"
-        f"Your link:\n{link}\n\n"
-        f"Current referrals: {refs}",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_home")]]),
-        disable_web_page_preview=True
-    )
-
-
-async def ads_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inline path: not used by ReplyKeyboard; kept for completeness."""
-    q = update.callback_query
-    await q.answer()
-    cfg = get_config()
-    user = get_user(str(q.from_user.id))
-    if not user or user.get("banned"):
-        await q.edit_message_text("❌ You are not allowed to use this bot.")
-        return
-    low, high = int(cfg["adRewardMin"]), int(cfg["adRewardMax"])
-    base = random.randint(low, high)
-    mult = vip_multiplier(user.get("vipTier", "free"), cfg)
-    reward = int(round(base * mult))
-    new_coins = int(user.get("coins", 0)) + reward
-    new_ads = int(user.get("adsWatched", 0)) + 1
-    update_user(user["id"], {"coins": new_coins, "adsWatched": new_ads})
-    await q.edit_message_text(
-        f"🎬 Ad watched!\nReward: +{reward} (base {base} × VIP {mult}x)\nBalance: {new_coins}",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_home")]])
-    )
-
-
-async def bonus_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    cfg = get_config()
-    user = get_user(str(q.from_user.id))
-    if not user:
-        await q.edit_message_text("❌ Please /start first.")
-        return
-    last = user.get("lastBonusAt", "")
-    can_claim = True
-    if last:
-        try:
-            last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
-            can_claim = datetime.now(timezone.utc) - last_dt >= timedelta(days=1)
-        except Exception:
-            can_claim = True
-    if not can_claim:
-                await update.message.reply_text("⏳ Bonus already claimed today.", reply_markup=main_menu_kb())
-                return
-            base = int(cfg["bonusReward"])
-            mult = vip_multiplier(user.get("vipTier", "free"), cfg)
-            reward = int(round(base * mult))
-            coins = int(user.get("coins", 0)) + reward
-            update_user(uid, {"coins": coins, "lastBonusAt": _now_ts()})
-            await update.message.reply_text(f"🎁 Bonus +{reward} coins!\nCurrent Balance: {coins}", reply_markup=main_menu_kb())
-
-        elif "refer" in text:
-            link = f"https://t.me/{BOT_USERNAME}?start={uid}"
-            refs = get_referral_count(uid)
-            await update.message.reply_text(
-                f"👥 Refer & Earn\nYour link:\n{link}\nReferrals: {refs}",
-                disable_web_page_preview=True,
-                reply_markup=main_menu_kb(),
-            )
-
-        elif "balance" in text:
-            user = get_user(uid) or add_user(uid, update.effective_user.full_name)
-            await update.message.reply_text(
-                f"💰 Coins: {user.get('coins',0)}\nVIP: {user.get('vipTier','free')}",
-                reply_markup=main_menu_kb()
-            )
-
-        elif "extra" in text:
-            await update.message.reply_text("✨ Extra", reply_markup=extra_menu_kb(cfg))
-
-        else:
-            await update.message.reply_text("❓ Please use the buttons below.", reply_markup=main_menu_kb())
-
-    except Exception as e:
-        log.exception("Error in handle_text: %s", e)
-        await update.message.reply_text("⚠️ An error occurred. Please try again.", reply_markup=main_menu_kb())
-
-
-# ---------- Inline callbacks (menus) ----------
-
-async def back_home_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    await update.callback_query.message.reply_text("🏠 Home", reply_markup=main_menu_kb())
-
-
-async def extra_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text("✨ Extra", reply_markup=extra_menu_kb(get_config()))
-
-
-async def stats_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    user = get_user(str(q.from_user.id))
-    if not user:
-        await q.edit_message_text("❌ Please /start first.")
-        return
-    refs = get_referral_count(user["id"])
-    text = (
-        "📊 Stats\n\n"
-        f"Name: {user.get('name')}\n"
-        f"Coins: {user.get('coins', 0)}\n"
-        f"VIP: {user.get('vipTier', 'free')}\n"
-        f"Ads Watched: {user.get('adsWatched', 0)}\n"
-        f"Referrals: {refs}\n"
-        f"Total Withdrawals: {user.get('totalWithdrawals', 0)}"
-    )
-    await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="extra")]]))
-
-
-# ---------- VIP (Stars Invoice) ----------
-
-async def vip_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text("👑 Choose your VIP tier:", reply_markup=vip_menu_kb(get_config()))
-
-
-async def vip_set_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show a Telegram Stars invoice for the chosen VIP tier."""
-    q = update.callback_query
-    await q.answer()
-    _, tier = q.data.split(":", 1)
-    cfg = get_config()
-    cost_map = cfg.get("vipCosts", {"vip1": 10, "vip2": 20, "vip3": 50})
-    cost_stars = int(cost_map.get(tier, 10))  # Stars units (XTR)
-
-    prices = [LabeledPrice(label=f"VIP {tier.upper()} Access", amount=cost_stars)]  # XTR uses stars as integer
-    await q.message.reply_invoice(
-        title=f"VIP {tier.upper()} Activation",
-        description=f"Unlock VIP {tier.upper()} — multipliers apply to Ads & Bonus.",
-        payload=f"vip_{tier}",
-        currency="XTR",  # Telegram Stars currency
-        prices=prices,
-        start_parameter=f"vip_{tier}",
-    )
-
-
-async def precheckout_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Answer pre-checkout query (required for payments in classic flow; safe for Stars too)."""
-    query = update.pre_checkout_query
-    try:
-        await query.answer(ok=True)
-    except Exception as e:
-        log.exception("PreCheckout error: %s", e)
-        await query.answer(ok=False, error_message="Payment error. Please try again later.")
-
-
-async def successful_payment_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle successful Telegram Stars payment and activate VIP."""
-    sp = update.message.successful_payment
-    payload = sp.invoice_payload  # e.g., "vip_vip1"
-    if not payload.startswith("vip_"):
-        return
-    tier = payload.split("_", 1)[1]
-    uid = str(update.effective_user.id)
-    update_user(uid, {"vipTier": tier, "vipActivatedAt": _now_ts()})
-    await update.message.reply_text(f"✅ VIP {tier.upper()} activated!", reply_markup=main_menu_kb())
-
-
-# ---------- (Optional) Withdraw flow placeholders (kept minimal here) ----------
 
 async def balance_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -743,6 +569,7 @@ async def bonus_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Error Handler
 # ========================
 
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     log.exception("Update caused error: %s", context.error)
     try:
@@ -755,6 +582,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 # ========================
 # APP BUILD & RUN
 # ========================
+
 
 def build_application():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
@@ -773,6 +601,8 @@ def build_application():
     app.add_handler(CallbackQueryHandler(balance_cb, pattern="^balance$"))
     app.add_handler(CallbackQueryHandler(vip_cb, pattern="^vip$"))
     app.add_handler(CallbackQueryHandler(vip_set_cb, pattern="^vip_set:"))
+    app.add_handler(CallbackQueryHandler(ads_cb, pattern="^ads$"))
+    app.add_handler(CallbackQueryHandler(bonus_cb, pattern="^bonus$"))
 
     # Payments (Stars)
     app.add_handler(PreCheckoutQueryHandler(precheckout_cb))
