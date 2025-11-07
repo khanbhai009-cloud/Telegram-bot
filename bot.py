@@ -3,6 +3,7 @@ import random
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple, List
+from telegram import ReplyKeyboardMarkup, KeyboardButton
 
 import requests
 from dotenv import load_dotenv
@@ -265,16 +266,13 @@ def vip_multiplier(tier: str, cfg: Dict[str, Any]) -> float:
 # ========================
 # UI Helpers
 # ========================
-
-def main_menu_kb() -> InlineKeyboardMarkup:
-    btns = [
-        [InlineKeyboardButton("🎬 Watch Ads", callback_data="ads")],
-        [InlineKeyboardButton("🎁 Bonus", callback_data="bonus")],
-        [InlineKeyboardButton("👥 Refer & Earn", callback_data="refer")],
-        [InlineKeyboardButton("💸 Balance", callback_data="balance")],
-        [InlineKeyboardButton("✨ Extra", callback_data="extra")],
+def main_menu_kb() -> ReplyKeyboardMarkup:
+    buttons = [
+        [KeyboardButton("▶️ Ad Dekho")],
+        [KeyboardButton("💰 Balance"), KeyboardButton("👥 Refer & Earn")],
+        [KeyboardButton("🎁 Bonus"), KeyboardButton("⚙️ Extra")],
     ]
-    return InlineKeyboardMarkup(btns)
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=False)
 
 
 def extra_menu_kb(cfg: Dict[str, Any]) -> InlineKeyboardMarkup:
