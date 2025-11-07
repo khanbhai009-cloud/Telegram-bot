@@ -2,67 +2,54 @@ import os
 import random
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional, Tuple, List
-from telegram import ReplyKeyboardMarkup, KeyboardButton
+from typing import Any, Dict, Optional, List
 
 import requests
 from dotenv import load_dotenv
-
 from telegram import (
     Update,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
 )
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    ContextTypes,
-    CallbackQueryHandler,
-    ConversationHandler,
     MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    ConversationHandler,
     filters,
 )
 
-# ========================
-# ENV & GLOBALS
-# ========================
+# ===================================
+# 🔐 ENVIRONMENT
+# ===================================
 load_dotenv()
 
-BOT_TOKEN = os.getenv("USER_BOT_TOKEN", "")
-FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
-FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY", "")
+BOT_TOKEN = os.getenv("USER_BOT_TOKEN")
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
+FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY")
 
 if not BOT_TOKEN or not FIREBASE_PROJECT_ID:
-    raise RuntimeError("Missing USER_BOT_TOKEN or FIREBASE_PROJECT_ID in .env")
+    raise SystemExit("❌ Missing USER_BOT_TOKEN or FIREBASE_PROJECT_ID in .env")
 
 BASE_URL = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents"
 
-# Logging
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s %(name)s | %(message)s",
-    level=logging.INFO,
-)
-log = logging.getLogger("user-bot")
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("EarningBot")
 
-# Conversation states
 WITHDRAW_UPI, WITHDRAW_AMOUNT = range(2)
-
-# Cached config (fetched on demand)
-CONFIG_CACHE: Dict[str, Any] = {}
-BOT_USERNAME: str = "YourBot"  # filled at startup
+CONFIG_CACHE = {}
+BOT_USERNAME = "EarningBot"
 
 
-# ========================
-# Firestore Helpers (REST)
-# ========================
+# ===================================
+# 🔥 FIRESTORE HELPER FUNCTIONS
+# ===================================
 
-def _now_ts() -> str:
-    # RFC3339 UTC timestamp with Z
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _fs_value(v: Any) -> Dict[str, Any]:
-    """Convert Python values to Firestore typed fields."""
+def _fs_value(v):
     if isinstance(v, bool):
         return {"booleanValue": v}
     if isinstance(v, int):
@@ -71,82 +58,262 @@ def _fs_value(v: Any) -> Dict[str, Any]:
         return {"doubleValue": v}
     if isinstance(v, dict):
         return {"mapValue": {"fields": {k: _fs_value(v[k]) for k in v}}}
-    if isinstance(v, list):
-        return {"arrayValue": {"values": [_fs_value(i) for i in v]}}
-    # try parse ISO time as timestamp
-    if isinstance(v, str) and (v.endswith("Z") or "T" in v):
-        try:
-            datetime.fromisoformat(v.replace("Z", "+00:00"))
-            return {"timestampValue": v}
-        except Exception:
-            pass
     return {"stringValue": str(v)}
 
 
-def _fs_parse(fields: Dict[str, Any]) -> Dict[str, Any]:
-    """Parse Firestore fields to Python values."""
-    out = {}
-    for k, fv in (fields or {}).items():
-        if "stringValue" in fv:
-            out[k] = fv["stringValue"]
-        elif "integerValue" in fv:
-            try:
-                out[k] = int(fv["integerValue"])
-            except Exception:
-                out[k] = int(float(fv["integerValue"]))
-        elif "doubleValue" in fv:
-            out[k] = float(fv["doubleValue"])
-        elif "booleanValue" in fv:
-            out[k] = bool(fv["booleanValue"])
-        elif "timestampValue" in fv:
-            out[k] = fv["timestampValue"]
-        elif "mapValue" in fv:
-            out[k] = _fs_parse(fv["mapValue"].get("fields", {}))
-        elif "arrayValue" in fv:
-            arr = fv["arrayValue"].get("values", [])
-            out[k] = [_fs_parse({"x": i})["x"] for i in arr]
+def _fs_parse(fields):
+    result = {}
+    for k, v in (fields or {}).items():
+        if "stringValue" in v:
+            result[k] = v["stringValue"]
+        elif "integerValue" in v:
+            result[k] = int(v["integerValue"])
+        elif "doubleValue" in v:
+            result[k] = float(v["doubleValue"])
+        elif "booleanValue" in v:
+            result[k] = v["booleanValue"]
+        elif "mapValue" in v:
+            result[k] = _fs_parse(v["mapValue"].get("fields", {}))
         else:
-            out[k] = None
-    return out
+            result[k] = None
+    return result
 
 
-def _fs_headers() -> Dict[str, str]:
-    # Public rules: no auth header required. API key used via query param.
-    return {"Content-Type": "application/json"}
-
-
-def _patch_document(collection: str, doc_id: str, data: Dict[str, Any], update_mask: Optional[List[str]] = None):
-    params = {}
-    if FIREBASE_API_KEY:
-        params["key"] = FIREBASE_API_KEY
-    if update_mask:
-        # Multiple fieldPaths allowed
-        params["updateMask.fieldPaths"] = update_mask
-    url = f"{BASE_URL}/{collection}/{doc_id}"
-    body = {"fields": {k: _fs_value(v) for k, v in data.items()}}
-    r = requests.patch(url, params=params, json=body, headers=_fs_headers(), timeout=15)
-    r.raise_for_status()
-    return r.json()
-
-
-def _get_document(collection: str, doc_id: str) -> Optional[Dict[str, Any]]:
-    params = {}
-    if FIREBASE_API_KEY:
-        params["key"] = FIREBASE_API_KEY
-    url = f"{BASE_URL}/{collection}/{doc_id}"
-    r = requests.get(url, params=params, headers=_fs_headers(), timeout=15)
+def firestore_get(path: str):
+    url = f"{BASE_URL}/{path}?key={FIREBASE_API_KEY}"
+    r = requests.get(url, timeout=10)
     if r.status_code == 404:
         return None
     r.raise_for_status()
-    data = r.json()
-    return _fs_parse(data.get("fields", {}))
+    return _fs_parse(r.json().get("fields", {}))
 
 
-def _create_document(collection: str, doc_id: Optional[str], data: Dict[str, Any]) -> Dict[str, Any]:
-    params = {}
-    if FIREBASE_API_KEY:
-        params["key"] = FIREBASE_API_KEY
-    if doc_id:
+def firestore_set(path: str, data: Dict[str, Any]):
+    url = f"{BASE_URL}/{path}?key={FIREBASE_API_KEY}"
+    body = {"fields": {k: _fs_value(v) for k, v in data.items()}}
+    r = requests.patch(url, json=body, timeout=10)
+    r.raise_for_status()
+    return _fs_parse(r.json().get("fields", {}))
+
+
+def firestore_create(collection: str, doc_id: str, data: Dict[str, Any]):
+    url = f"{BASE_URL}/{collection}?documentId={doc_id}&key={FIREBASE_API_KEY}"
+    body = {"fields": {k: _fs_value(v) for k, v in data.items()}}
+    r = requests.post(url, json=body, timeout=10)
+    r.raise_for_status()
+    return _fs_parse(r.json().get("fields", {}))
+
+
+def get_config():
+    global CONFIG_CACHE
+    if CONFIG_CACHE:
+        return CONFIG_CACHE
+    cfg = firestore_get("config/global") or {}
+    cfg.setdefault("referralReward", 10)
+    cfg.setdefault("bonusReward", 20)
+    cfg.setdefault("adRewardMin", 1)
+    cfg.setdefault("adRewardMax", 5)
+    cfg.setdefault("adWebsiteURL", "https://example.com")
+    cfg.setdefault("supportBot", "https://t.me/ExampleSupportBot")
+    cfg.setdefault("vipMultipliers", {"vip1": 1.5, "vip2": 2, "vip3": 3})
+    CONFIG_CACHE = cfg
+    return cfg
+
+
+def get_user(uid):
+    return firestore_get(f"users/{uid}")
+
+
+def add_user(uid, name, ref_by=""):
+    now = datetime.now(timezone.utc).isoformat()
+    data = {
+        "id": uid,
+        "name": name,
+        "coins": 0,
+        "reffer": 0,
+        "refferBy": ref_by,
+        "adsWatched": 0,
+        "vipTier": "free",
+        "joinedAt": now,
+        "lastBonusAt": "",
+    }
+    firestore_set(f"users/{uid}", data)
+    return data
+
+
+def update_user(uid, data):
+    firestore_set(f"users/{uid}", data)
+
+
+def vip_multiplier(tier, cfg):
+    return float(cfg.get("vipMultipliers", {}).get(tier, 1.0))
+
+
+# ===================================
+# 💬 UI HELPERS
+# ===================================
+
+def main_menu_kb():
+    buttons = [
+        [KeyboardButton("▶️ Ad Dekho")],
+        [KeyboardButton("💰 Balance"), KeyboardButton("👥 Refer & Earn")],
+        [KeyboardButton("🎁 Bonus"), KeyboardButton("⚙️ Extra")],
+    ]
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+
+
+def inline_back_home():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_home")]])
+
+
+# ===================================
+# 🤖 BOT COMMANDS
+# ===================================
+
+async def post_init(app):
+    global BOT_USERNAME
+    me = await app.bot.get_me()
+    BOT_USERNAME = me.username
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    uid = str(user.id)
+    name = user.full_name
+    args = context.args or []
+    ref_by = args[0] if args else ""
+
+    existing = get_user(uid)
+    cfg = get_config()
+    if not existing:
+        add_user(uid, name, ref_by)
+        reward = int(cfg["referralReward"])
+        update_user(uid, {"coins": reward})
+        if ref_by and ref_by != uid:
+            ref_user = get_user(ref_by)
+            if ref_user:
+                update_user(ref_by, {
+                    "coins": int(ref_user.get("coins", 0)) + reward,
+                    "reffer": int(ref_user.get("reffer", 0)) + 1
+                })
+
+    await update.message.reply_text(
+        f"👋 Welcome, {name}!\nYou are already registered.\nUse the buttons below to earn and manage your balance.",
+        reply_markup=main_menu_kb()
+    )
+
+
+# ===================================
+# 🎬 FEATURES
+# ===================================
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").lower()
+    user_id = str(update.effective_user.id)
+    cfg = get_config()
+
+    if "ad" in text:
+        user = get_user(user_id)
+        base = random.randint(int(cfg["adRewardMin"]), int(cfg["adRewardMax"]))
+        mult = vip_multiplier(user.get("vipTier", "free"), cfg)
+        reward = int(round(base * mult))
+        coins = int(user.get("coins", 0)) + reward
+        ads = int(user.get("adsWatched", 0)) + 1
+        update_user(user_id, {"coins": coins, "adsWatched": ads})
+        await update.message.reply_text(
+            f"🎬 Ad watched!\nReward: +{reward} coins (base {base} × VIP {mult}x)\nCurrent Balance: {coins} coins",
+            reply_markup=inline_back_home()
+        )
+
+    elif "bonus" in text:
+        user = get_user(user_id)
+        last = user.get("lastBonusAt", "")
+        can_claim = True
+        if last:
+            try:
+                dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                can_claim = datetime.now(timezone.utc) - dt > timedelta(days=1)
+            except:
+                can_claim = True
+        if not can_claim:
+            await update.message.reply_text("⏳ Bonus already claimed today.", reply_markup=main_menu_kb())
+            return
+        base = int(cfg["bonusReward"])
+        mult = vip_multiplier(user.get("vipTier", "free"), cfg)
+        reward = int(round(base * mult))
+        coins = int(user.get("coins", 0)) + reward
+        update_user(user_id, {"coins": coins, "lastBonusAt": datetime.now(timezone.utc).isoformat()})
+        await update.message.reply_text(f"🎁 Bonus +{reward} coins!\nCurrent Balance: {coins}", reply_markup=main_menu_kb())
+
+    elif "refer" in text:
+        link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
+        await update.message.reply_text(
+            f"👥 Refer & Earn\nShare this link:\n{link}\nEarn bonus for each referral!",
+            disable_web_page_preview=True,
+            reply_markup=main_menu_kb(),
+        )
+
+    elif "balance" in text:
+        user = get_user(user_id)
+        await update.message.reply_text(
+            f"💰 Coins: {user.get('coins',0)}\nVIP: {user.get('vipTier','free')}",
+            reply_markup=main_menu_kb()
+        )
+
+    elif "extra" in text:
+        cfg = get_config()
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("👑 VIP Plans", callback_data="vip")],
+            [InlineKeyboardButton("🆘 Support", url=cfg.get("supportBot"))],
+            [InlineKeyboardButton("⬅️ Back", callback_data="back_home")]
+        ])
+        await update.message.reply_text("✨ Extra Options:", reply_markup=kb)
+
+
+async def back_home_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.callback_query.message.reply_text("🏠 Back to menu", reply_markup=main_menu_kb())
+
+
+async def vip_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    cfg = get_config()
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("VIP 1", callback_data="vip_set:vip1")],
+        [InlineKeyboardButton("VIP 2", callback_data="vip_set:vip2")],
+        [InlineKeyboardButton("VIP 3", callback_data="vip_set:vip3")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="back_home")]
+    ])
+    await update.callback_query.message.reply_text("👑 Choose your VIP tier:", reply_markup=kb)
+
+
+async def vip_set_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _, tier = update.callback_query.data.split(":")
+    uid = str(update.effective_user.id)
+    update_user(uid, {"vipTier": tier, "vipActivatedAt": datetime.now(timezone.utc).isoformat()})
+    await update.callback_query.answer("VIP activated!")
+    await update.callback_query.message.reply_text(f"✅ VIP {tier.upper()} activated!", reply_markup=main_menu_kb())
+
+
+# ===================================
+# 🚀 MAIN
+# ===================================
+
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(back_home_cb, pattern="^back_home$"))
+    app.add_handler(CallbackQueryHandler(vip_cb, pattern="^vip$"))
+    app.add_handler(CallbackQueryHandler(vip_set_cb, pattern="^vip_set:"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    log.info("Bot is running...")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()    if doc_id:
         params["documentId"] = doc_id
     url = f"{BASE_URL}/{collection}"
     body = {"fields": {k: _fs_value(v) for k, v in data.items()}}
