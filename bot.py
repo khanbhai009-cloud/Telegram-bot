@@ -350,7 +350,7 @@ def _run_query(collection: str, where_field: str, op: str, value: Any, limit: Op
 # Public API for bot features
 
 def get_user(uid: str) -> Optional[Dict[str, Any]]:
-    return _get_document("users", uid)
+    return firestore_get(f"users/{uid}")
 
 
 def add_user(uid: str, name: str, ref_by: Optional[str]) -> Dict[str, Any]:
@@ -398,7 +398,8 @@ def get_config(force_refresh: bool = False) -> Dict[str, Any]:
     global CONFIG_CACHE
     if CONFIG_CACHE and not force_refresh:
         return CONFIG_CACHE
-    cfg = _get_document("config", "global") or {}
+    cfg = firestore_get("config/global") or {}
+
     # Reasonable fallbacks if config is empty
     cfg.setdefault("referralReward", 10)
     cfg.setdefault("bonusReward", 20)
