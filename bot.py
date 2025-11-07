@@ -310,10 +310,6 @@ def main():
 
     log.info("Bot is running...")
     app.run_polling()
-
-
-if __name__ == "__main__":
-    main()  
     
     if doc_id:
         params["documentId"] = doc_id
