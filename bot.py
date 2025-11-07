@@ -349,12 +349,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not can_claim:
                 await update.message.reply_text("⏳ Bonus already claimed today.", reply_markup=main_menu_kb())
                 return
-            base = int(cfg["bonusReward"])
+            base = int(cfg["bonusReward"])   # ← FIXED INDENT
             mult = vip_multiplier(user.get("vipTier", "free"), cfg)
             reward = int(round(base * mult))
             coins = int(user.get("coins", 0)) + reward
             update_user(uid, {"coins": coins, "lastBonusAt": _now_ts()})
-            await update.message.reply_text(f"🎁 Bonus +{reward} coins!\nCurrent Balance: {coins}", reply_markup=main_menu_kb())
+            await update.message.reply_text(
+                f"🎁 Bonus +{reward} coins!\nCurrent Balance: {coins}",
+                reply_markup=main_menu_kb()
+            )
 
         elif "refer" in text:
             link = f"https://t.me/{BOT_USERNAME}?start={uid}"
