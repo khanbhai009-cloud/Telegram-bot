@@ -590,4 +590,71 @@ async def withdraw_amount_msg(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def withdraw_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await
+    await q.answer("Cancelled")
+    await q.edit_message_text("❌ Withdraw cancelled.", reply_markup=main_menu_kb())
+    return ConversationHandler.END
+
+
+async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("withdraw_upi", None)
+    await update.message.reply_text("❌ Cancelled.", reply_markup=main_menu_kb())
+    return ConversationHandler.END
+
+
+# ========================
+# Error Handler
+# ========================
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.exception("Update caused error: %s", context.error)
+    try:
+        if isinstance(update, Update) and update.effective_chat:
+            await update.effective_chat.send_message("⚠️ An error occurred. Please try again.")
+    except Exception:
+        pass
+
+
+# ========================
+# Main
+# ========================
+
+def build_application():
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
+
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CallbackQueryHandler(home_cb, pattern="^back_home$"))
+    app.add_handler(CallbackQueryHandler(ads_cb, pattern="^ads$"))
+    app.add_handler(CallbackQueryHandler(bonus_cb, pattern="^bonus$"))
+    app.add_handler(CallbackQueryHandler(refer_cb, pattern="^refer$"))
+    app.add_handler(CallbackQueryHandler(balance_cb, pattern="^balance$"))
+    app.add_handler(CallbackQueryHandler(extra_cb, pattern="^extra$"))
+    app.add_handler(CallbackQueryHandler(stats_cb, pattern="^stats$"))
+    app.add_handler(CallbackQueryHandler(vip_cb, pattern="^vip$"))
+    app.add_handler(CallbackQueryHandler(vip_set_cb, pattern="^vip_set:"))
+    app.add_handler(CallbackQueryHandler(withdraw_cancel_cb, pattern="^cancel_withdraw$"))
+
+    # Withdraw conversation
+    conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(withdraw_start_cb, pattern="^withdraw$")],
+        states={
+            WITHDRAW_UPI: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_upi_msg)],
+            WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_amount_msg)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_cmd)],
+        name="withdraw_conv",
+        persistent=False,
+    )
+    app.add_handler(conv)
+
+    app.add_error_handler(error_handler)
+    return app
+
+
+def main():
+    app = build_application()
+    log.info("Starting bot…")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == "__main__":
+    main()
